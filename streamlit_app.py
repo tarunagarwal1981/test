@@ -1,151 +1,146 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.feature_selection import mutual_info_regression
+from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import KBinsDiscretizer
+from scipy.stats import ks_2samp
+import ruptures as rpt
+from database import get_db_engine
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+# Define column names as a dictionary
+COLUMN_NAMES = {
+    'VESSEL_NAME': 'VESSEL_NAME',
+    'REPORT_DATE': 'REPORT_DATE',
+    'ME_CONSUMPTION': 'ME_CONSUMPTION',
+    'OBSERVERD_DISTANCE': 'OBSERVERD_DISTANCE',
+    'SPEED': 'SPEED',
+    'DISPLACEMENT': 'DISPLACEMENT',
+    'STEAMING_TIME_HRS': 'STEAMING_TIME_HRS',
+    'WINDFORCE': 'WINDFORCE',
+    'VESSEL_ACTIVITY': 'VESSEL_ACTIVITY',
+    'LOAD_TYPE': 'LOAD_TYPE'
+}
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# Streamlit app
+st.title('Advanced Validation Debugging App')
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# Get input for vessel name and date filter
+vessel_name = st.text_input("Enter Vessel Name:")
+date_filter = st.date_input("Enter Date Filter:")
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
+if st.button("Run Advanced Validation"):
+    try:
+        # Create a database engine
+        engine = get_db_engine()
+        
+        # Run advanced validation
+        st.write("### Running Advanced Validation...")
+        validation_results = run_advanced_validation(engine, vessel_name, date_filter)
+        
+        # Display validation results
+        if not validation_results.empty:
+            st.write("### Advanced Validation Results:")
+            st.dataframe(validation_results)
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+            st.write("No anomalies or drift detected.")
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+# Advanced validation function with debugging messages
+def run_advanced_validation(engine, vessel_name, date_filter):
+    validation_results = []
+    
+    # Fetch data for the vessel
+    query = """
+    SELECT * FROM sf_consumption_logs
+    WHERE "{}" = %s AND "{}" >= %s;
+    """.format(COLUMN_NAMES['VESSEL_NAME'], COLUMN_NAMES['REPORT_DATE'])
+    df = pd.read_sql_query(query, engine, params=(vessel_name, date_filter))
+    
+    # Debugging: Check if data is fetched
+    if df.empty:
+        st.write(f"No data found for vessel: {vessel_name}")
+        return pd.DataFrame()
+    st.write(f"Data fetched for vessel: {vessel_name}, Number of rows: {len(df)}")
+    
+    # Split data into training (first 6 months) and validation (last 6 months)
+    df[COLUMN_NAMES['REPORT_DATE']] = pd.to_datetime(df[COLUMN_NAMES['REPORT_DATE']])
+    df = df.sort_values(by=COLUMN_NAMES['REPORT_DATE'])
+    mid_point = len(df) // 2
+    train_df = df.iloc[:mid_point]
+    test_df = df.iloc[mid_point:]
+    
+    # Preprocess training and validation data separately to avoid data leakage
+    train_df = preprocess_data(train_df)
+    test_df = preprocess_data(test_df)
+    
+    # Debugging: Check if preprocessing was successful
+    st.write(f"Training data rows after preprocessing: {len(train_df)}")
+    st.write(f"Validation data rows after preprocessing: {len(test_df)}")
+    
+    # Anomaly Detection using Isolation Forest and LOF
+    anomalies = detect_anomalies(test_df)
+    if anomalies.empty:
+        st.write(f"No anomalies detected for vessel: {vessel_name}")
+    else:
+        st.write(f"Anomalies detected for vessel: {vessel_name}, Number of anomalies: {len(anomalies)}")
+    
+    # Drift Detection using KS Test
+    drift = detect_drift(train_df, test_df)
+    
+    # Change Point Detection using Ruptures
+    change_points = detect_change_points(test_df)
+    
+    # Feature Relationships using Mutual Information
+    relationships = validate_relationships(train_df)
+    
+    # Compile validation results
+    if not anomalies.empty:
+        for index, row in anomalies.iterrows():
+            validation_results.append({
+                'Vessel Name': str(vessel_name),
+                'Anomaly Name': 'Anomaly Detected',
+                'Feature': ', '.join([f"{k}: {v}" for k, v in row.to_dict().items()])
+            })
+    for feature, has_drift in drift.items():
+        if has_drift:
+            validation_results.append({
+                'Vessel Name': str(vessel_name),
+                'Anomaly Name': 'Drift Detected',
+                'Feature': str(feature)
+            })
+    for feature, points in change_points.items():
+        if points:
+            validation_results.append({
+                'Vessel Name': str(vessel_name),
+                'Anomaly Name': 'Change Point Detected',
+                'Feature': str(feature),
+                'Value': ', '.join(map(str, points))
+            })
+    
+    return pd.DataFrame(validation_results)
+
+# Placeholder functions for anomaly, drift, change point detection, and preprocessing
+def detect_anomalies(df):
+    # Debugging: Print dataframe info
+    st.write("Detecting anomalies...")
+    st.write(df.head())
+    return pd.DataFrame()  # Placeholder
+
+def detect_drift(train_df, test_df):
+    st.write("Detecting drift...")
+    return {}  # Placeholder
+
+def detect_change_points(df):
+    st.write("Detecting change points...")
+    return {}  # Placeholder
+
+def validate_relationships(df):
+    st.write("Validating feature relationships...")
+    return {}  # Placeholder
+
+def preprocess_data(df):
+    st.write("Preprocessing data...")
+    return df  # Placeholder
