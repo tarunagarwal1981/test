@@ -72,22 +72,26 @@ if 'ports' not in st.session_state:
 def add_port():
     st.session_state.ports.append('')
 
+# Function to update port value
+def update_port(i, value):
+    st.session_state.ports[i] = value
+
 # Custom autocomplete input
-def port_input(label, key):
+def port_input(label, i):
     col1, col2 = st.columns([3, 1])
     with col1:
-        user_input = st.text_input(label, key=f"input_{key}")
+        user_input = st.text_input(label, value=st.session_state.ports[i], key=f"input_{i}")
     with col2:
         if user_input:
             suggestions = process.extract(user_input, port_names, limit=5)
-            suggestion = st.selectbox("Suggestions", [s[0] for s in suggestions], key=f"suggest_{key}")
-            if suggestion != user_input:
-                st.session_state[f"input_{key}"] = suggestion
-    return st.session_state.get(f"input_{key}", "")
+            suggestion = st.selectbox("Suggestions", [s[0] for s in suggestions], key=f"suggest_{i}")
+            if st.button("Select", key=f"select_{i}"):
+                update_port(i, suggestion)
+    return user_input
 
 # Display port input fields with custom autocomplete
-for i, port in enumerate(st.session_state.ports):
-    st.session_state.ports[i] = port_input(f'Port {i+1}:', f'port_{i}')
+for i in range(len(st.session_state.ports)):
+    port_input(f'Port {i+1}:', i)
 
 # Add port button
 st.button('Add Port', on_click=add_port)
