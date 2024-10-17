@@ -5,7 +5,6 @@ import folium
 from streamlit_folium import folium_static
 import searoute as sr
 from fuzzywuzzy import process
-from streamlit_autocomplete import autocomplete
 
 # Load the World Port Index data
 @st.cache_data
@@ -73,14 +72,22 @@ if 'ports' not in st.session_state:
 def add_port():
     st.session_state.ports.append('')
 
-# Display port input fields with autocomplete
+# Custom autocomplete input
+def port_input(label, key):
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        user_input = st.text_input(label, key=f"input_{key}")
+    with col2:
+        if user_input:
+            suggestions = process.extract(user_input, port_names, limit=5)
+            suggestion = st.selectbox("Suggestions", [s[0] for s in suggestions], key=f"suggest_{key}")
+            if suggestion != user_input:
+                st.session_state[f"input_{key}"] = suggestion
+    return st.session_state.get(f"input_{key}", "")
+
+# Display port input fields with custom autocomplete
 for i, port in enumerate(st.session_state.ports):
-    st.session_state.ports[i] = autocomplete(
-        label=f'Port {i+1}:',
-        options=port_names,
-        default=port,
-        key=f'port_{i}'
-    )
+    st.session_state.ports[i] = port_input(f'Port {i+1}:', f'port_{i}')
 
 # Add port button
 st.button('Add Port', on_click=add_port)
