@@ -2,8 +2,7 @@ streamlit
 pandas
 geopandas
 folium
-streamlit-folium
+streamlit-folium>=0.12.0
 searoute
 fuzzywuzzy
 python-Levenshtein
-
