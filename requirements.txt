@@ -1,8 +1,8 @@
 streamlit
 pandas
-psycopg2-binary 
-openpyxl 
-matplotlib
-sqlalchemy
-scikit-learn
-ruptures
+geopandas
+folium
+streamlit-folium
+searoute
+fuzzywuzzy
+python-Levenshtein
