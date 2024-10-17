@@ -6,4 +6,4 @@ streamlit-folium
 searoute
 fuzzywuzzy
 python-Levenshtein
-streamlit-autocomplete
+
