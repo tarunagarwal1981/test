@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import geopandas as gpd
 import folium
-from streamlit_folium import folium_static
+from streamlit_folium import st_folium
 import searoute as sr
 from fuzzywuzzy import process
 
@@ -111,7 +111,7 @@ if len(st.session_state.ports) >= 2 and all(st.session_state.ports):
         # Plot the route
         m = plot_route(st.session_state.ports)
         if m:
-            folium_static(m)
+            st_folium(m, width=700, height=500)
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
 else:
