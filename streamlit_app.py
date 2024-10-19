@@ -1,118 +1,55 @@
 import streamlit as st
-import pandas as pd
-import geopandas as gpd
-import folium
-from streamlit_folium import st_folium
-import searoute as sr
-from fuzzywuzzy import process
+import ocrmypdf
+import fitz  # PyMuPDF
+import tempfile
+import os
+from PIL import Image
+import io
 
-# Load the World Port Index data
-@st.cache_data
-def load_wpi_data():
-    return pd.read_csv("UpdatedPub150.csv")
+def process_pdf_with_ocr(input_file):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
+        ocrmypdf.ocr(input_file, temp_output.name, deskew=True, optimize=3, skip_text=True)
+        return temp_output.name
 
-wpi_data = load_wpi_data()
-port_names = wpi_data['Main Port Name'].tolist()
+def extract_images_from_pdf(pdf_path):
+    doc = fitz.open(pdf_path)
+    images = []
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        image_list = page.get_images(full=True)
+        for img_index, img in enumerate(image_list):
+            xref = img[0]
+            base_image = doc.extract_image(xref)
+            image_bytes = base_image["image"]
+            image = Image.open(io.BytesIO(image_bytes))
+            images.append(image)
+    return images
 
-def world_port_index(port_to_match):
-    best_match = process.extractOne(port_to_match, wpi_data['Main Port Name'])
-    return wpi_data[wpi_data['Main Port Name'] == best_match[0]].iloc[0]
+st.title("PDF Image Extractor with OCR")
 
-def route_distance(origin, destination):
-    origin_port = world_port_index(origin)
-    destination_port = world_port_index(destination)
+uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+
+if uploaded_file is not None:
+    st.write("Processing PDF with OCR...")
     
-    origin_coords = [float(origin_port['Longitude']), float(origin_port['Latitude'])]
-    destination_coords = [float(destination_port['Longitude']), float(destination_port['Latitude'])]
-    
-    sea_route = sr.searoute(origin_coords, destination_coords, units="naut")
-    return int(sea_route['properties']['length'])
+    # Save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_input:
+        temp_input.write(uploaded_file.read())
+        temp_input_path = temp_input.name
 
-def plot_route(ports):
-    if len(ports) < 2:
-        return None
+    # Process with OCR
+    ocr_output_path = process_pdf_with_ocr(temp_input_path)
 
-    # Calculate the center of all ports
-    lats = []
-    lons = []
-    for port in ports:
-        port_info = world_port_index(port)
-        lats.append(float(port_info['Latitude']))
-        lons.append(float(port_info['Longitude']))
-    
-    center_lat = sum(lats) / len(lats)
-    center_lon = sum(lons) / len(lons)
+    st.write("Extracting images...")
+    images = extract_images_from_pdf(ocr_output_path)
 
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=3)
+    st.write(f"Extracted {len(images)} images")
 
-    # Add markers and route lines
-    for i in range(len(ports)):
-        port = ports[i]
-        port_info = world_port_index(port)
-        coords = [float(port_info['Latitude']), float(port_info['Longitude'])]
-        folium.Marker(coords, popup=port).add_to(m)
+    for i, img in enumerate(images):
+        st.image(img, caption=f"Image {i+1}", use_column_width=True)
 
-        if i < len(ports) - 1:
-            next_port = ports[i+1]
-            next_port_info = world_port_index(next_port)
-            next_coords = [float(next_port_info['Longitude']), float(next_port_info['Latitude'])]
-            route = sr.searoute(coords[::-1], next_coords)
-            folium.PolyLine(locations=[list(reversed(coord)) for coord in route['geometry']['coordinates']], 
-                            color="red", weight=2, opacity=0.8).add_to(m)
+    # Clean up temporary files
+    os.unlink(temp_input_path)
+    os.unlink(ocr_output_path)
 
-    return m
-
-st.title('Sea Route Plotter')
-
-# Initialize session state for ports if it doesn't exist
-if 'ports' not in st.session_state:
-    st.session_state.ports = ['', '']
-
-# Function to add a new port input field
-def add_port():
-    st.session_state.ports.append('')
-
-# Function to update port value
-def update_port(i, value):
-    st.session_state.ports[i] = value
-
-# Custom autocomplete input
-def port_input(label, i):
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        user_input = st.text_input(label, value=st.session_state.ports[i], key=f"input_{i}")
-    with col2:
-        if user_input:
-            suggestions = process.extract(user_input, port_names, limit=5)
-            suggestion = st.selectbox("Suggestions", [s[0] for s in suggestions], key=f"suggest_{i}")
-            if st.button("Select", key=f"select_{i}"):
-                update_port(i, suggestion)
-    return user_input
-
-# Display port input fields with custom autocomplete
-for i in range(len(st.session_state.ports)):
-    port_input(f'Port {i+1}:', i)
-
-# Add port button
-st.button('Add Port', on_click=add_port)
-
-# Calculate route if we have at least two ports
-if len(st.session_state.ports) >= 2 and all(st.session_state.ports):
-    try:
-        # Calculate total distance
-        total_distance = 0
-        for i in range(len(st.session_state.ports) - 1):
-            distance = route_distance(st.session_state.ports[i], st.session_state.ports[i+1])
-            total_distance += distance
-            st.write(f"Distance from {st.session_state.ports[i]} to {st.session_state.ports[i+1]}: {distance} nautical miles")
-
-        st.write(f"Total distance: {total_distance} nautical miles")
-
-        # Plot the route
-        m = plot_route(st.session_state.ports)
-        if m:
-            st_folium(m, width=700, height=500)
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-else:
-    st.write("Please enter at least two ports to plot the route.")
+st.write("Upload a PDF to extract images.")
