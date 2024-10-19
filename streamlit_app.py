@@ -1,15 +1,11 @@
 import streamlit as st
-import ocrmypdf
 import fitz  # PyMuPDF
 import tempfile
 import os
 from PIL import Image
 import io
-
-def process_pdf_with_ocr(input_file):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
-        ocrmypdf.ocr(input_file, temp_output.name, deskew=True, optimize=3, skip_text=True)
-        return temp_output.name
+import pytesseract
+from pdf2image import convert_from_path
 
 def extract_images_from_pdf(pdf_path):
     doc = fitz.open(pdf_path)
@@ -25,31 +21,39 @@ def extract_images_from_pdf(pdf_path):
             images.append(image)
     return images
 
+def perform_ocr(pdf_path):
+    images = convert_from_path(pdf_path)
+    text = ""
+    for i, image in enumerate(images):
+        text += f"\n\n--- Page {i+1} ---\n\n"
+        text += pytesseract.image_to_string(image)
+    return text
+
 st.title("PDF Image Extractor with OCR")
 
 uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
 if uploaded_file is not None:
-    st.write("Processing PDF with OCR...")
-    
     # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_input:
         temp_input.write(uploaded_file.read())
         temp_input_path = temp_input.name
 
-    # Process with OCR
-    ocr_output_path = process_pdf_with_ocr(temp_input_path)
-
     st.write("Extracting images...")
-    images = extract_images_from_pdf(ocr_output_path)
+    images = extract_images_from_pdf(temp_input_path)
 
     st.write(f"Extracted {len(images)} images")
 
     for i, img in enumerate(images):
         st.image(img, caption=f"Image {i+1}", use_column_width=True)
 
-    # Clean up temporary files
-    os.unlink(temp_input_path)
-    os.unlink(ocr_output_path)
+    st.write("Performing OCR...")
+    ocr_text = perform_ocr(temp_input_path)
 
-st.write("Upload a PDF to extract images.")
+    st.write("OCR Result:")
+    st.text_area("Extracted Text", ocr_text, height=300)
+
+    # Clean up temporary file
+    os.unlink(temp_input_path)
+
+st.write("Upload a PDF to extract images and perform OCR.")
