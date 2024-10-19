@@ -3,3 +3,6 @@ pandas
 ocrmypdf
 PyMuPDF
 Pillow
+streamlit
+pytesseract
+pdf2image
