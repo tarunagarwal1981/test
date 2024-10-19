@@ -2,22 +2,34 @@ import streamlit as st
 import fitz  # PyMuPDF
 import io
 from PIL import Image
+import numpy as np
+import cv2
 
 def extract_images_from_page(page, page_num):
+    # Render the page at a higher resolution
+    zoom = 2  # Increase this for higher resolution
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat)
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    
+    # Convert to numpy array and process
+    img_np = np.array(img)
+    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+    
+    # Threshold to separate text from graphics
+    _, binary = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
+    
+    # Find contours
+    contours, _ = cv2.findContours(255 - binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
     images = []
-    image_list = page.get_images(full=True)
-    for img_index, img in enumerate(image_list):
-        try:
-            xref = img[0]
-            base_image = page.parent.extract_image(xref)
-            image_bytes = base_image["image"]
-            image = Image.open(io.BytesIO(image_bytes))
-            
-            # Filter out very small images (likely to be icons or artifacts)
-            if image.width > 100 and image.height > 100:
-                images.append((f"Page {page_num + 1}, Image {img_index + 1}", image))
-        except Exception as e:
-            st.warning(f"Could not extract image {img_index + 1} from page {page_num + 1}: {str(e)}")
+    for i, contour in enumerate(contours):
+        x, y, w, h = cv2.boundingRect(contour)
+        if w > 100 and h > 100:  # Filter out small contours
+            roi = img_np[y:y+h, x:x+w]
+            pil_img = Image.fromarray(roi)
+            images.append((f"Page {page_num + 1}, Image {i + 1}", pil_img))
+    
     return images
 
 def process_pdf(doc):
@@ -27,10 +39,9 @@ def process_pdf(doc):
         page = doc[page_num]
         images = extract_images_from_page(page, page_num)
         all_images.extend(images)
-    
     return all_images
 
-st.title("PDF Image Extractor for Embedded Images")
+st.title("Advanced PDF Image Extractor")
 
 uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
@@ -60,4 +71,4 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Error processing PDF: {str(e)}")
 
-st.write("Upload a PDF to extract embedded images only.")
+st.write("Upload a PDF to extract images, including complex diagrams and illustrations.")
