@@ -4,14 +4,15 @@ import tempfile
 import os
 from PIL import Image
 import io
-import pytesseract
-from pdf2image import convert_from_path
 
-def extract_images_from_pdf(pdf_path):
+def extract_images_and_text_from_pdf(pdf_path):
     doc = fitz.open(pdf_path)
     images = []
+    text = ""
     for page_num in range(len(doc)):
         page = doc[page_num]
+        
+        # Extract images
         image_list = page.get_images(full=True)
         for img_index, img in enumerate(image_list):
             xref = img[0]
@@ -19,17 +20,15 @@ def extract_images_from_pdf(pdf_path):
             image_bytes = base_image["image"]
             image = Image.open(io.BytesIO(image_bytes))
             images.append(image)
-    return images
+        
+        # Extract text
+        text += f"\n\n--- Page {page_num + 1} ---\n\n"
+        text += page.get_text()
+    
+    doc.close()
+    return images, text
 
-def perform_ocr(pdf_path):
-    images = convert_from_path(pdf_path)
-    text = ""
-    for i, image in enumerate(images):
-        text += f"\n\n--- Page {i+1} ---\n\n"
-        text += pytesseract.image_to_string(image)
-    return text
-
-st.title("PDF Image Extractor with OCR")
+st.title("PDF Image and Text Extractor")
 
 uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
@@ -39,21 +38,18 @@ if uploaded_file is not None:
         temp_input.write(uploaded_file.read())
         temp_input_path = temp_input.name
 
-    st.write("Extracting images...")
-    images = extract_images_from_pdf(temp_input_path)
+    st.write("Extracting images and text...")
+    images, extracted_text = extract_images_and_text_from_pdf(temp_input_path)
 
     st.write(f"Extracted {len(images)} images")
 
     for i, img in enumerate(images):
         st.image(img, caption=f"Image {i+1}", use_column_width=True)
 
-    st.write("Performing OCR...")
-    ocr_text = perform_ocr(temp_input_path)
-
-    st.write("OCR Result:")
-    st.text_area("Extracted Text", ocr_text, height=300)
+    st.write("Extracted Text:")
+    st.text_area("Text Content", extracted_text, height=300)
 
     # Clean up temporary file
     os.unlink(temp_input_path)
 
-st.write("Upload a PDF to extract images and perform OCR.")
+st.write("Upload a PDF to extract images and text.")
