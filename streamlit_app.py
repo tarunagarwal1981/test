@@ -1,240 +1,286 @@
+```python
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
+import plotly.figure_factory as ff
+from scipy.stats import norm
 
-# Page configuration
-st.set_page_config(page_title="Maritime Digital Transformation Demo", layout="wide")
+# Custom CSS for dark theme and styling
+CUSTOM_CSS = """
+<style>
+    .stApp {
+        background-color: #0E1117;
+        color: #FAFAFA;
+    }
+    .css-1d391kg {
+        background-color: #1E1E1E;
+    }
+    .stMetric {
+        background-color: #262730;
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #32383E;
+    }
+    .chart-container {
+        background-color: #1E1E1E;
+        border-radius: 5px;
+        padding: 10px;
+        border: 1px solid #32383E;
+    }
+    h1, h2, h3 {
+        color: #00FF88 !important;
+        text-shadow: 0 0 10px rgba(0,255,136,0.5);
+    }
+    .stButton button {
+        background-color: #00FF88;
+        color: #0E1117;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        transition: all 0.3s ease;
+    }
+    .stButton button:hover {
+        background-color: #00CC6A;
+        box-shadow: 0 0 10px rgba(0,255,136,0.5);
+    }
+</style>
+"""
 
-def main():
-    # Sidebar navigation
-    page = st.sidebar.selectbox(
-        "Select Demo",
-        ["Introduction",
-         "IoT & Real-Time Monitoring",
-         "Vessel Performance Analytics",
-         "Digital Twin Simulation",
-         "Predictive Maintenance",
-         "CII Calculator"]
+# Color scheme
+COLORS = {
+    'primary': '#00FF88',    # Neon Green
+    'secondary': '#FF00FF',  # Neon Pink
+    'tertiary': '#00FFFF',   # Neon Cyan
+    'warning': '#FF0000',    # Neon Red
+    'background': '#1E1E1E', # Dark background
+    'grid': '#333333'        # Dark grid
+}
+
+# Chart template
+def create_chart_template():
+    return {
+        'layout': {
+            'paper_bgcolor': 'rgba(0,0,0,0)',
+            'plot_bgcolor': 'rgba(0,0,0,0)',
+            'font': {'color': '#FFFFFF'},
+            'xaxis': {
+                'gridcolor': COLORS['grid'],
+                'showgrid': True,
+                'zeroline': False
+            },
+            'yaxis': {
+                'gridcolor': COLORS['grid'],
+                'showgrid': True,
+                'zeroline': False
+            }
+        }
+    }
+
+# Utility functions for data generation
+def generate_vessel_data(days=30):
+    dates = pd.date_range(end=datetime.now(), periods=days)
+    return pd.DataFrame({
+        'date': dates,
+        'speed': np.random.normal(15, 1, days),
+        'fuel_consumption': np.random.normal(50, 5, days),
+        'engine_load': np.random.normal(75, 5, days),
+        'hull_efficiency': 100 - np.linspace(0, 5, days) + np.random.normal(0, 0.5, days)
+    })
+
+def create_performance_gauge(value, title, min_val=0, max_val=100):
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        title={'text': title, 'font': {'color': COLORS['primary']}},
+        gauge={
+            'axis': {'range': [min_val, max_val]},
+            'bar': {'color': COLORS['primary']},
+            'bgcolor': "rgba(0,0,0,0)",
+            'borderwidth': 2,
+            'bordercolor': COLORS['primary'],
+            'steps': [
+                {'range': [0, max_val/3], 'color': 'rgba(255,0,0,0.1)'},
+                {'range': [max_val/3, 2*max_val/3], 'color': 'rgba(255,255,0,0.1)'},
+                {'range': [2*max_val/3, max_val], 'color': 'rgba(0,255,0,0.1)'}
+            ]
+        }
+    ))
+    fig.update_layout(template=create_chart_template(), height=200)
+    return fig
+
+def create_hull_performance_chart(data):
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=data['date'],
+        y=data['hull_efficiency'],
+        name='Hull Efficiency',
+        line=dict(color=COLORS['primary'], width=2),
+        mode='lines'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=data['date'],
+        y=[100] * len(data),
+        name='Reference',
+        line=dict(color=COLORS['tertiary'], dash='dash'),
+        mode='lines'
+    ))
+
+    fig.update_layout(
+        template=create_chart_template(),
+        title="Hull Performance Trend",
+        height=400
+    )
+    return fig
+
+def create_speed_consumption_chart(data):
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=data['speed'],
+        y=data['fuel_consumption'],
+        mode='markers',
+        marker=dict(
+            size=8,
+            color=data['engine_load'],
+            colorscale='Viridis',
+            showscale=True
+        ),
+        name='Operating Points'
+    ))
+
+    fig.update_layout(
+        template=create_chart_template(),
+        title="Speed vs. Fuel Consumption",
+        height=400,
+        xaxis_title="Speed (knots)",
+        yaxis_title="Fuel Consumption (t/day)"
+    )
+    return fig
+
+def create_engine_performance_chart(data):
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    fig.add_trace(
+        go.Scatter(
+            x=data['date'],
+            y=data['engine_load'],
+            name="Engine Load",
+            line=dict(color=COLORS['primary']),
+        ),
+        secondary_y=False
     )
 
-    if page == "Introduction":
-        show_introduction()
-    elif page == "IoT & Real-Time Monitoring":
-        show_iot_demo()
-    elif page == "Vessel Performance Analytics":
-        show_performance_analytics()
-    elif page == "Digital Twin Simulation":
-        show_digital_twin()
-    elif page == "Predictive Maintenance":
-        show_predictive_maintenance()
-    elif page == "CII Calculator":
-        show_cii_calculator()
+    fig.add_trace(
+        go.Scatter(
+            x=data['date'],
+            y=data['fuel_consumption'],
+            name="Fuel Consumption",
+            line=dict(color=COLORS['secondary']),
+        ),
+        secondary_y=True
+    )
 
-def show_introduction():
-    st.title("Maritime Digital Transformation")
-    st.subheader("Interactive Demonstration of Maritime Analytics")
+    fig.update_layout(
+        template=create_chart_template(),
+        title="Engine Performance Analysis",
+        height=400
+    )
+    return fig
 
-    # Key Statistics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Global Trade Share", "90%", "Maritime Transport")
-    with col2:
-        st.metric("Annual CO2 Emissions", "1 billion tons", "2-3% Global Emissions")
-    with col3:
-        st.metric("Efficiency Potential", "25%", "Through Digital Solutions")
+def main():
+    # Page config
+    st.set_page_config(page_title="Maritime Analytics Platform", layout="wide")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    # Regulatory Timeline
-    st.subheader("Regulatory Timeline")
-    timeline_data = {
-        'Year': [2023, 2024, 2025, 2026],
-        'Regulation': ['CII Implementation', 'EU ETS Phase 1', 'FuelEU Maritime', 'CII Rating Impact'],
-        'Impact': ['Vessel Rating System', '€100/ton CO2', 'Alternative Fuel Requirements', 'Commercial Restrictions']
-    }
-    st.dataframe(pd.DataFrame(timeline_data))
+    # Sidebar
+    st.sidebar.title("Navigation")
+    page = st.sidebar.selectbox(
+        "Select Module",
+        ["Dashboard", "Hull Performance", "Engine Analytics", "Voyage Analysis"]
+    )
 
-def show_iot_demo():
-    st.title("IoT & Real-Time Monitoring")
-    
-    # Simulated real-time sensor data
-    def generate_sensor_data():
-        return {
-            'Engine RPM': np.random.normal(85, 2),
-            'Fuel Flow (t/day)': np.random.normal(30, 1),
-            'Speed (knots)': np.random.normal(15, 0.5),
-            'Wind Speed (knots)': np.random.normal(12, 2),
-            'Power (kW)': np.random.normal(15000, 500)
-        }
+    vessel = st.sidebar.selectbox(
+        "Select Vessel",
+        ["Vessel 001", "Vessel 002", "Vessel 003"]
+    )
 
-    # Real-time monitoring dashboard
-    st.subheader("Real-Time Vessel Monitoring")
-    
-    # Create columns for metrics
-    cols = st.columns(5)
-    sensor_data = generate_sensor_data()
-    
-    for i, (key, value) in enumerate(sensor_data.items()):
-        cols[i].metric(key, f"{value:.1f}")
+    # Generate sample data
+    data = generate_vessel_data()
 
-    # Historical trend simulation
-    st.subheader("Performance Trends")
-    
-    # Generate sample historical data
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
-    df = pd.DataFrame({
-        'timestamp': dates,
-        'fuel_consumption': np.random.normal(30, 2, 100),
-        'speed': np.random.normal(15, 1, 100)
-    })
-
-    # Plot historical trends
-    fig = px.line(df, x='timestamp', y=['fuel_consumption', 'speed'])
-    st.plotly_chart(fig, use_container_width=True)
-
-def show_performance_analytics():
-    st.title("Vessel Performance Analytics")
-
-    # Sample performance data
-    st.subheader("Trim Optimization Analysis")
-    
-    # Generate sample trim vs. fuel consumption data
-    trim_data = pd.DataFrame({
-        'trim': np.linspace(-2, 2, 50),
-        'fuel_consumption': 30 + 2*np.sin(np.linspace(-2, 2, 50)) + np.random.normal(0, 0.2, 50)
-    })
-
-    fig = px.scatter(trim_data, x='trim', y='fuel_consumption',
-                    title='Fuel Consumption vs. Trim',
-                    labels={'trim': 'Trim (m)', 'fuel_consumption': 'Fuel Consumption (t/day)'})
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Efficiency metrics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Optimal Trim", "0.5m", "2.3% Improvement")
-    with col2:
-        st.metric("Fuel Savings", "1.2 t/day", "↓4%")
-    with col3:
-        st.metric("CO2 Reduction", "3.7 t/day", "↓4%")
-
-def show_digital_twin():
-    st.title("Digital Twin Simulation")
-
-    # Simulation parameters
-    st.sidebar.subheader("Simulation Parameters")
-    speed = st.sidebar.slider("Speed (knots)", 10, 20, 15)
-    draft = st.sidebar.slider("Draft (m)", 8, 14, 11)
-    wind_speed = st.sidebar.slider("Wind Speed (knots)", 0, 30, 15)
-
-    # Calculate simulated performance
-    power = 1000 * (0.3 * speed**3 + 100)
-    fuel_consumption = power * 0.00021
-    emission = fuel_consumption * 3.114
-
-    # Display results
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Power (kW)", f"{power:,.0f}")
-    with col2:
-        st.metric("Fuel Consumption (t/day)", f"{fuel_consumption:.1f}")
-    with col3:
-        st.metric("CO2 Emissions (t/day)", f"{emission:.1f}")
-
-    # Simulation visualization
-    st.subheader("Performance Simulation")
-    
-    # Create sample simulation data
-    sim_speeds = np.linspace(10, 20, 50)
-    sim_power = 1000 * (0.3 * sim_speeds**3 + 100)
-    
-    fig = px.line(x=sim_speeds, y=sim_power,
-                 labels={'x': 'Speed (knots)', 'y': 'Power (kW)'},
-                 title='Speed-Power Curve')
-    fig.add_scatter(x=[speed], y=[power], mode='markers',
-                   name='Current Operation')
-    st.plotly_chart(fig, use_container_width=True)
-
-def show_predictive_maintenance():
-    st.title("Predictive Maintenance Demo")
-
-    # Generate sample engine data
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
-    normal_pattern = np.sin(np.linspace(0, 4*np.pi, 100)) * 2 + 80
-    engine_data = pd.DataFrame({
-        'date': dates,
-        'temperature': normal_pattern + np.random.normal(0, 1, 100),
-        'vibration': np.random.normal(5, 0.5, 100),
-        'pressure': np.random.normal(4, 0.2, 100)
-    })
-
-    # Add anomaly
-    engine_data.loc[80:, 'temperature'] += np.linspace(0, 5, 20)
-
-    # Plot engine parameters
-    st.subheader("Engine Parameters Monitoring")
-    fig = px.line(engine_data, x='date', y=['temperature', 'vibration', 'pressure'],
-                 title='Engine Parameters Over Time')
-    
-    # Add warning threshold
-    fig.add_hline(y=85, line_dash="dash", line_color="red",
-                 annotation_text="Warning Threshold")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Maintenance prediction
-    if engine_data['temperature'].iloc[-1] > 83:
-        st.warning('⚠️ Maintenance Required: High temperature trend detected')
-        st.info('Recommended Action: Schedule maintenance within next 7 days')
-    else:
-        st.success('✅ Equipment operating within normal parameters')
-
-def show_cii_calculator():
-    st.title("CII Calculator")
-
-    # Input parameters
-    st.subheader("Vessel Parameters")
-    col1, col2 = st.columns(2)
-    with col1:
-        dwt = st.number_input("Deadweight Tonnage", value=50000)
-        distance = st.number_input("Distance Travelled (nm)", value=5000)
-    with col2:
-        fuel_consumption = st.number_input("Annual Fuel Consumption (tons)", value=3000)
-        cargo_carried = st.number_input("Cargo Carried (tons)", value=40000)
-
-    # Calculate CII
-    if st.button("Calculate CII"):
-        # Simplified CII calculation
-        co2_emissions = fuel_consumption * 3.114
-        cii = (co2_emissions * 1000000) / (dwt * distance)
+    if page == "Dashboard":
+        st.title("Maritime Analytics Dashboard")
         
-        # Determine rating (simplified thresholds)
-        rating = "A" if cii < 10 else "B" if cii < 12 else "C" if cii < 15 else "D" if cii < 18 else "E"
+        # Key Performance Indicators
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.plotly_chart(create_performance_gauge(87, "Hull Performance"), use_container_width=True)
+        with col2:
+            st.plotly_chart(create_performance_gauge(92, "Engine Efficiency"), use_container_width=True)
+        with col3:
+            st.plotly_chart(create_performance_gauge(95, "Propeller Efficiency"), use_container_width=True)
+        with col4:
+            st.plotly_chart(create_performance_gauge(78, "Fuel Efficiency"), use_container_width=True)
+
+        # Main charts
+        st.plotly_chart(create_hull_performance_chart(data), use_container_width=True)
         
-        # Display results
-        st.subheader("CII Results")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(create_speed_consumption_chart(data), use_container_width=True)
+        with col2:
+            st.plotly_chart(create_engine_performance_chart(data), use_container_width=True)
+
+    elif page == "Hull Performance":
+        st.title("Hull Performance Analysis")
+        
+        # Hull performance metrics
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Current Hull Efficiency", "87%", "-2.3%")
+            st.metric("Estimated Fuel Penalty", "3.5%", "1.2%")
+        with col2:
+            st.metric("Days Since Last Cleaning", "145 days", None)
+            st.metric("Recommended Cleaning", "In 35 days", None)
+
+        # Hull performance chart
+        st.plotly_chart(create_hull_performance_chart(data), use_container_width=True)
+
+    elif page == "Engine Analytics":
+        st.title("Engine Performance Analytics")
+        
+        # Engine metrics
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("CII Value", f"{cii:.2f}")
+            st.metric("Average Load", "75%", "2.1%")
         with col2:
-            st.metric("CO2 Emissions", f"{co2_emissions:.0f} tons")
+            st.metric("SFOC", "176 g/kWh", "-0.8%")
         with col3:
-            st.metric("CII Rating", rating)
+            st.metric("Efficiency", "92%", "0.5%")
+
+        # Engine performance chart
+        st.plotly_chart(create_engine_performance_chart(data), use_container_width=True)
+
+    elif page == "Voyage Analysis":
+        st.title("Voyage Analysis")
         
-        # Recommendations
-        if rating in ["D", "E"]:
-            st.warning("⚠️ Vessel requires immediate efficiency improvements")
-            st.info("""
-            Recommended Actions:
-            1. Optimize speed profile
-            2. Implement trim optimization
-            3. Consider hull cleaning
-            4. Review route optimization opportunities
-            """)
-        elif rating == "C":
-            st.info("ℹ️ Consider efficiency improvements to maintain competitiveness")
-        else:
-            st.success("✅ Vessel operating at good efficiency levels")
+        # Voyage metrics
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Average Speed", "14.5 knots", "0.3 knots")
+            st.metric("Distance Covered", "3,521 nm", None)
+        with col2:
+            st.metric("Fuel Consumption", "45.2 mt/day", "-2.1 mt/day")
+            st.metric("CO2 Emissions", "141 t/day", "-6.5 t/day")
+
+        # Speed consumption chart
+        st.plotly_chart(create_speed_consumption_chart(data), use_container_width=True)
 
 if __name__ == "__main__":
     main()
+```
