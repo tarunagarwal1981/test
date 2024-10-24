@@ -12,3 +12,4 @@ datetime
 altair 
 seaborn 
 matplotlib
+plotly
