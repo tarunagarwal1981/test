@@ -1,258 +1,172 @@
-#```python
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
-import plotly.figure_factory as ff
-from scipy.stats import norm
-from scipy import stats
-import numpy.polynomial.polynomial as poly
+import folium
+from streamlit_folium import folium_static
+import random
 
-# Enhanced styling with darker theme
-CUSTOM_CSS = """
-<style>
-    /* Main app styling */
+# Set page config
+st.set_page_config(
+    page_title="Maritime Analytics Dashboard",
+    page_icon="🚢",
+    layout="wide"
+)
+
+# Custom CSS for futuristic look
+st.markdown("""
+    <style>
     .stApp {
         background-color: #0E1117;
-        color: #FAFAFA;
     }
     .css-1d391kg {
-        background-color: #0A0C10;
+        background-color: #1A1C23;
     }
-    .stMetric {
-        background-color: #161B22;
-        padding: 15px;
-        border-radius: 5px;
-        border: 1px solid #21262D;
+    .streamlit-expanderHeader {
+        background-color: #262730;
     }
-    .chart-container {
-        background-color: #0D1117;
-        border-radius: 5px;
-        padding: 10px;
-        border: 1px solid #21262D;
-    }
-    h1 {
-        color: #00FF88 !important;
-        text-shadow: 0 0 10px rgba(0,255,136,0.5);
-    }
-    h2, h3 {
-        color: #58A6FF !important;
-        text-shadow: 0 0 8px rgba(88,166,255,0.5);
-    }
-    .stButton button {
-        background-color: #238636;
-        color: #FFFFFF;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 6px;
-        transition: all 0.3s ease;
-    }
-    .stButton button:hover {
-        background-color: #2EA043;
-        box-shadow: 0 0 10px rgba(46,160,67,0.5);
-    }
-    .stSelectbox > div > div {
-        background-color: #161B22;
-        border: 1px solid #21262D;
-    }
-    .stSelectbox > div > div > div {
-        background-color: #161B22;
-        color: #FFFFFF;
-    }
-</style>
-"""
+    </style>
+""", unsafe_allow_html=True)
 
-# Enhanced color scheme
-COLORS = {
-    'primary': '#00FF88',    # Neon Green
-    'secondary': '#FF00FF',  # Neon Pink
-    'tertiary': '#00FFFF',   # Neon Cyan
-    'warning': '#FF0000',    # Neon Red
-    'background': '#0D1117', # Darker background
-    'grid': '#21262D',       # Darker grid
-    'text': '#FFFFFF',       # White text
-    'accent1': '#58A6FF',    # GitHub blue
-    'accent2': '#FF7B72',    # GitHub red
-    'accent3': '#FFA657'     # GitHub orange
-}
-
-def create_chart_template():
-    """Create a consistent dark theme template for charts"""
-    return {
-        'layout': {
-            'paper_bgcolor': COLORS['background'],
-            'plot_bgcolor': COLORS['background'],
-            'font': {
-                'color': COLORS['text'],
-                'family': 'Arial, sans-serif'
-            },
-            'xaxis': {
-                'gridcolor': COLORS['grid'],
-                'showgrid': True,
-                'zeroline': False,
-                'linecolor': COLORS['grid'],
-                'title_font': {'color': COLORS['text']},
-                'tickfont': {'color': COLORS['text']}
-            },
-            'yaxis': {
-                'gridcolor': COLORS['grid'],
-                'showgrid': True,
-                'zeroline': False,
-                'linecolor': COLORS['grid'],
-                'title_font': {'color': COLORS['text']},
-                'tickfont': {'color': COLORS['text']}
-            },
-            'legend': {
-                'bgcolor': 'rgba(13,17,23,0.8)',
-                'font': {'color': COLORS['text']}
-            }
-        }
-    }
-
-# Data generation functions
-def generate_vessel_data(days=30):
-    """Generate realistic vessel performance data"""
+# Generate sample data
+def generate_ship_data(days=365):
     dates = pd.date_range(end=datetime.now(), periods=days)
-    base_speed = 15 + np.sin(np.linspace(0, 4*np.pi, days)) * 2
     
-    # Add realistic noise and trends
-    speed = base_speed + np.random.normal(0, 0.5, days)
-    fuel_consumption = 3.5 * speed**2 + np.random.normal(0, 5, days)
-    engine_load = 65 + speed/20*100 + np.random.normal(0, 3, days)
-    hull_efficiency = 100 - np.linspace(0, 5, days) + np.random.normal(0, 0.5, days)
-    
-    # Generate trim data
-    trim_range = np.linspace(-2, 2, days)
-    trim = np.random.choice(trim_range, days)
-    trim_effect = -2 * trim**2 + np.random.normal(0, 0.5, days)
-    
-    # Calculate CII
-    distance = speed * 24  # nautical miles per day
-    cii = (fuel_consumption * 3.114) / (distance * 25000/100000)
-    
-    return pd.DataFrame({
+    # Basic vessel data
+    data = {
         'date': dates,
-        'speed': speed,
-        'fuel_consumption': fuel_consumption,
-        'engine_load': engine_load,
-        'hull_efficiency': hull_efficiency,
-        'trim': trim,
-        'trim_effect': trim_effect,
-        'cii': cii,
-        'distance': distance
-    })
+        'speed': np.random.normal(15, 2, days),  # Average speed 15 knots
+        'fuel_consumption': np.random.normal(50, 5, days),  # MT/day
+        'hull_fouling_index': np.cumsum(np.random.normal(0.01, 0.005, days)),  # Gradually increasing
+        'main_engine_power': np.random.normal(20000, 1000, days),  # kW
+        'rpm': np.random.normal(100, 5, days),
+        'wind_speed': np.random.normal(15, 5, days),
+        'wave_height': np.random.normal(2, 0.5, days),
+        'trim': np.random.normal(0, 0.5, days),
+        'co2_emissions': np.random.normal(160, 10, days),  # g/ton-mile
+    }
+    
+    df = pd.DataFrame(data)
+    
+    # Add some realistic relationships
+    df['fuel_consumption'] += df['speed'] * 0.5  # Higher speed = higher consumption
+    df['co2_emissions'] = df['fuel_consumption'] * 3.114  # Standard conversion factor
+    df['hull_fouling_index'] = np.clip(df['hull_fouling_index'], 0, 5)
+    
+    return df
 
-def create_speed_power_analysis(data):
-    """Create sophisticated speed-power analysis with polynomial fit"""
+def generate_voyage_data():
+    # Sample ports
+    ports = {
+        'Singapore': (1.3521, 103.8198),
+        'Rotterdam': (51.9225, 4.4792),
+        'Shanghai': (31.2304, 121.4737),
+        'Los Angeles': (33.7425, -118.2079),
+        'Dubai': (25.2697, 55.3095)
+    }
+    
+    voyages = []
+    for i in range(5):
+        start, end = random.sample(list(ports.items()), 2)
+        voyages.append({
+            'voyage_id': f'V{i+1}',
+            'start_port': start[0],
+            'end_port': end[0],
+            'start_lat': start[1][0],
+            'start_lon': start[1][1],
+            'end_lat': end[1][0],
+            'end_lon': end[1][1],
+            'status': random.choice(['Completed', 'In Progress', 'Planned'])
+        })
+    
+    return pd.DataFrame(voyages)
+
+# Sidebar navigation
+def sidebar():
+    st.sidebar.title('Navigation')
+    page = st.sidebar.selectbox(
+        'Select Page',
+        ['Overview', 'Hull Performance', 'Emissions Tracking', 
+         'Machinery Performance', 'Trim Optimization', 
+         'Speed & Consumption', 'Voyage Monitoring']
+    )
+    return page
+
+# Main pages
+def overview_page(df):
+    st.title('Maritime Analytics Overview')
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Average Speed", f"{df['speed'].mean():.1f} knots", 
+                 f"{df['speed'].mean() - df['speed'].shift(30).mean():.1f}")
+    with col2:
+        st.metric("Fuel Consumption", f"{df['fuel_consumption'].mean():.1f} MT/day",
+                 f"{df['fuel_consumption'].mean() - df['fuel_consumption'].shift(30).mean():.1f}")
+    with col3:
+        st.metric("CO2 Emissions", f"{df['co2_emissions'].mean():.1f} g/ton-mile",
+                 f"{df['co2_emissions'].mean() - df['co2_emissions'].shift(30).mean():.1f}")
+    
+    # Recent trends
+    st.subheader("Recent Performance Trends")
+    fig = px.line(df.tail(30), x='date', y=['speed', 'fuel_consumption', 'co2_emissions'],
+                  template="plotly_dark")
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Raw data table
+    st.subheader("Raw Data")
+    st.dataframe(df.tail(10).style.background_gradient(cmap='Greens'))
+
+def hull_performance_page(df):
+    st.title('Hull Performance Analysis')
+    
+    # Hull fouling trend
+    st.subheader("Hull Fouling Index Trend")
+    fig = px.line(df, x='date', y='hull_fouling_index',
+                  template="plotly_dark")
+    fig.add_hline(y=3, line_dash="dash", line_color="red",
+                  annotation_text="Critical Threshold")
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Speed vs Power analysis
+    st.subheader("Speed-Power Relationship")
+    fig = px.scatter(df, x='speed', y='main_engine_power',
+                    color='hull_fouling_index',
+                    template="plotly_dark")
+    st.plotly_chart(fig, use_container_width=True)
+
+def emissions_page(df):
+    st.title('Emissions & CII Tracking')
+    
+    # Calculate CII (simplified)
+    cii = df['co2_emissions'].rolling(window=30).mean()
+    
     fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df['date'], y=cii, name='CII Rating'))
+    fig.add_hline(y=180, line_dash="dash", line_color="red", name='Threshold D')
+    fig.add_hline(y=150, line_dash="dash", line_color="yellow", name='Threshold C')
+    fig.add_hline(y=120, line_dash="dash", line_color="green", name='Threshold B')
     
-    # Scatter plot of actual data
-    fig.add_trace(go.Scatter(
-        x=data['speed'],
-        y=data['fuel_consumption'],
-        mode='markers',
-        name='Operating Points',
-        marker=dict(
-            size=8,
-            color=data['engine_load'],
-            colorscale='Viridis',
-            showscale=True,
-            colorbar=dict(title='Engine Load (%)')
-        )
-    ))
-    
-    # Calculate polynomial fit
-    coefs = poly.polyfit(data['speed'], data['fuel_consumption'], 2)
-    speed_range = np.linspace(data['speed'].min(), data['speed'].max(), 100)
-    fuel_fit = poly.polyval(speed_range, coefs)
-    
-    # Add polynomial fit line
-    fig.add_trace(go.Scatter(
-        x=speed_range,
-        y=fuel_fit,
-        mode='lines',
-        name='Best Fit Curve',
-        line=dict(color=COLORS['primary'], width=2)
-    ))
-    
-    fig.update_layout(
-        template=create_chart_template(),
-        title="Speed-Power Analysis with Best Fit Curve",
-        xaxis_title="Speed (knots)",
-        yaxis_title="Fuel Consumption (t/day)",
-        height=500
-    )
-    
-    return fig
+    fig.update_layout(template="plotly_dark")
+    st.plotly_chart(fig, use_container_width=True)
 
-def create_digital_twin_simulation(data):
-    """Create digital twin simulation visualization"""
-    # Create subplots for different aspects of the digital twin
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=(
-            "Real-time Performance",
-            "Efficiency Analysis",
-            "Trim Optimization",
-            "Power Analysis"
-        )
-    )
+def main():
+    page = sidebar()
     
-    # Real-time performance plot
-    fig.add_trace(
-        go.Scatter(
-            x=data['date'],
-            y=data['hull_efficiency'],
-            name="Hull Efficiency",
-            line=dict(color=COLORS['primary'])
-        ),
-        row=1, col=1
-    )
+    # Generate sample data
+    df = generate_ship_data()
+    voyage_df = generate_voyage_data()
     
-    # Efficiency analysis
-    fig.add_trace(
-        go.Scatter(
-            x=data['speed'],
-            y=data['fuel_consumption'],
-            mode='markers',
-            name="Operating Points",
-            marker=dict(color=COLORS['secondary'])
-        ),
-        row=1, col=2
-    )
-    
-    # Trim optimization
-    fig.add_trace(
-        go.Scatter(
-            x=data['trim'],
-            y=data['trim_effect'],
-            mode='markers',
-            name="Trim Effect",
-            marker=dict(color=COLORS['tertiary'])
-        ),
-        row=2, col=1
-    )
-    
-    # Power analysis
-    fig.add_trace(
-        go.Scatter(
-            x=data['date'],
-            y=data['engine_load'],
-            name="Engine Load",
-            line=dict(color=COLORS['accent1'])
-        ),
-        row=2, col=2
-    )
-    
-    fig.update_layout(
-        template=create_chart_template(),
-        height=800,
-        title_text="Digital Twin Simulation",
-        showlegend=True
-    )
-    
-    return fig
-#```
+    if page == 'Overview':
+        overview_page(df)
+    elif page == 'Hull Performance':
+        hull_performance_page(df)
+    elif page == 'Emissions Tracking':
+        emissions_page(df)
+    # Add other pages as needed
+
+if __name__ == "__main__":
+    main()
